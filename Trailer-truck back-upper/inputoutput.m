@@ -1,0 +1,345 @@
+%% Iniitalize truck parameters
+M1 = 2;
+L1 = 8;
+L2 = 3;
+L3 = 12;
+ds = 0.5;
+ 
+%% Generate input and outputs
+ 
+% Matrix declarations
+ 
+data = 10000;
+ip = zeros (data,6);
+op = zeros (data,5);
+ 
+i=0;
+b=0;
+ 
+for b=0:100:data
+    
+    if (b+i>data)
+        break
+    end
+    
+    % Select start position for one iteration
+    ip(b+1,1) = randi(480);
+    ip(b+1,2) = randi(480);
+    ip(b+1,3) = randi(361)-1;
+    ip(b+1,4) = (randi(21)-11)*5;
+    ip(b+1,5) = (randi(21)-11)*5;
+    
+    % Backing up for 100 itterations
+    for i=1:100
+        
+        x = ip(b+i,1);
+        y = ip(b+i,2);
+        t1 = ip(b+i,3);
+        p1 = ip(b+i,4);
+        p2 = ip(b+i,5);
+        
+        % Generate random steering signal
+        p0 = (randi(21)-11)*5;
+        ip (b+i,6) = p0;
+        
+        
+        p1_ = ( p1 + ds * ( sind(p0)/L1 - cosd(p0)*sind(p1)/L2 - M1*sind(p0)*cosd(p1)/(L1*L2) ) );
+        if (p1_<-50 || p1_>50)
+            i=i-1;
+            continue
+        end
+        
+        p2_ = ( p2 + ds * ( cosd(p0)*sind(p1)/L2 - M1*sind(p0)*cosd(p1)/(L1*L2) - cosd(p0)*cosd(p1)*sind(p2)/L3  - M1*sind(p0)*sind(p1)*sind(p2)/(L1*L3) ) );
+        if (p2_<-50 || p2_>50)
+            i=i-1;
+            continue
+        end
+        
+        x_ = x - ds * cosd ( t1 - p1 - p2 );
+        y_ = y - ds * sind ( t1 - p1 - p2 );
+        
+        t1_ = acosd ( cosd(t1) + ds/L1 * ( cosd(p0) - cosd(t1) )) ;
+        
+        if (t1>180 && t1<=270)          % Avoid 3rd quadrant shift to 2nd quadrant
+            t1_ = t1_ + 90;
+        elseif (t1>=270 && t1<360)      % Avoid 4th quadrant shift to 1st quadrant
+            t1_ = t1_ + 270;
+        end
+        
+        
+        % Setting output
+        op(b+i,1) = x_;
+        op(b+i,2) = y_;
+        op(b+i,3) = t1_;
+        op(b+i,4) = p1_;
+        op(b+i,5) = p2_;
+        
+        % Setting output as next input
+        if (b+i<data)
+            ip(b+i+1,1) = op(b+i,1);
+            ip(b+i+1,2) = op(b+i,2);
+            ip(b+i+1,3) = op(b+i,3);
+            ip(b+i+1,4) = op(b+i,4);
+            ip(b+i+1,5) = op(b+i,5);
+        else
+            break
+        end
+        
+    end
+end
+ 
+ip = ip';
+op = op';
+ 
+% Display results
+z = zeros (data,1);
+full_set = [ip' z op'];           
+full_set;
+ 
+ 
+ 
+ 
+ 
+ 
+%% Create and Train Emulator
+nete = newff (ip,op,100);
+nete = init (nete);
+nete = train (nete, ip, op);
+ 
+% Evaluate trained emulator's weights
+ 
+w01 = cell2mat ( nete.IW(1,1) );
+w12 = cell2mat ( nete.LW(2,1) );
+ 
+ 
+ 
+ 
+ 
+ 
+%% Create Controller
+ 
+input = rand (5,2000);
+output = rand (1,2000);
+ 
+netc = newff (input,output,25);
+netc = init (netc);
+ 
+netc.trainFcn = 'trainc';
+netc.trainParam.epochs = 10;
+ 
+ 
+%% Defining Controller Lessons
+lessons = 16;
+ 
+x_dock = 0;
+y_dock = 250;
+ 
+chapter = zeros (lessons,5);
+backup_max = zeros (lessons);
+ 
+chapter(1,1:5) = [ 200 250 0 0 0 ];
+backup_max(1) = 1000;
+ 
+chapter(2,1:5) = [ 200 400 45 20 20 ];
+backup_max(2) = 1000;
+ 
+chapter(3,1:5) = [ 200 100 315 -20 -20 ];
+backup_max(3) = 1000;
+ 
+chapter(4,1:5) = [ 400 250 0 0 0 ];
+backup_max(4) = 1500;
+ 
+chapter(5,1:5) = [ 400 400 45 20 -20 ];
+backup_max(5) = 1500;
+ 
+chapter(6,1:5) = [ 400 100 315 20 -20 ];
+backup_max(6) = 1500;
+ 
+chapter(7,1:5) = [ 250 400 90 50 -50 ];
+backup_max(7) = 1500;
+ 
+chapter(8,1:5) = [ 250 100 90 50 -50 ];
+backup_max(8) = 1500;
+ 
+chapter(9,1:5) = [ 100 400 180 0 0];
+backup_max(9) = 2000;
+ 
+chapter(10,1:5) = [ 100 100 180 0 0 ];
+backup_max(10) = 2000;
+ 
+chapter(11,1:5) = [ 400 400 45 -50 -50 ];
+backup_max(11) = 2000;
+ 
+chapter(12,1:5) = [ 400 100 315 50 50 ];
+backup_max(12) = 2000;
+ 
+chapter(13,1:5) = [ 250 250 90 30 30 ];
+backup_max(13) = 2000;
+ 
+chapter(14,1:5) = [ 250 250 270 -30 -30 ];
+backup_max(14) = 2000;
+ 
+chapter(15,1:5) = [ 300 450 0 -40 0 ];
+backup_max(15) = 2000;
+ 
+chapter(16,1:5) = [ 300 50 0 40 0];
+backup_max(16) = 2000;
+ 
+i=1;
+ 
+ 
+%% Train Controller
+ 
+for i = 1:lessons
+    
+    %% Lesson 'i'
+    
+    i
+    
+    inp = zeros (6,backup_max(i));
+    out = zeros (5,backup_max(i));
+    input = zeros (5,backup_max(i));
+    output = zeros (1,backup_max(i));
+    target_output = zeros (1,backup_max(i));
+    
+    error = zeros (5,backup_max(i));    
+    
+    % 1st time controller input
+    input(1:5,1) = chapter(i,1:5)';
+    
+    b=1;
+    
+    %% Forward pass
+    
+    for  b=1:backup_max(i)
+        
+        %%  Backup 'b'
+        
+        % Controller output
+        output(1,b) = sim ( netc, input(1:5,b) );
+        % Emulator input
+        inp(1:6,b) = [ input(1:5,b); output(1,b) ];
+        
+        %% Emulator forward pass
+             
+        out(1:5,b) = sim (nete, inp (1:6,b));
+        
+        z0(1:6,b) = inp(1:6,b);
+        v1(1:100,b) = w01 * z0(1:6,b);
+        z1(1:100,b) = tansig (v1(1:100,b));
+        v2(1:5,b) = w12 * z1(1:100,b);
+        z2(1:5,b) = purelin (v2(1:5,b));
+        
+        %out(1:5,b) = z2(1:5,b);
+        
+        % Saving error value of state vector
+        error(1,b) = x_dock - out(1,b);
+        error(2,b) = y_dock - out(2,b);
+        error(3,b) = 0 - ( out(3,b) - out(4,b) - out(5,b) );
+        error(4,b) = 0;
+        error(5,b) = 0;
+              
+        
+        %% Next Controller input
+        if (b<backup_max(i))
+            input(1:5,b+1) = out(1:5,b);
+        end
+    end
+    
+    
+    %% Calculate positions error    
+    initial = input (1:5,i);
+    final = out (1:5,b);
+    initial_final = [initial final]
+    
+    b_max = b
+    error2 = [ mean(error(1,1:b)); mean(error(2,1:b)); mean(error(3,1:b)); mean(error(4,1:b)); mean(error(5,1:b)) ];
+    
+    error_controller = zeros(1,b_max);
+    
+    %% Emulator backward pass
+    while (b>=1)
+                
+        da_dn2 = purelin('dn',v2(1:5,b),z2(1:5,b)); 
+        delta2 = error2 .* da_dn2;
+        
+        da_dn1 = tansig ('dn',v1(1:100,b),z1(1:100,b));
+        delta1 = da_dn1 .* (w12' * delta2);
+        
+        error0 = w01' * delta1;
+        
+        error_controller(1,b) = error0 (6,1);
+        target_output(1,b) = output(1,b) + error_controller(1,b);
+        
+        % Controller training
+        %netc = adapt ( netc, input(1:5,b), output(1,b)+error_controller );
+        
+        b=b-1;
+    end
+    
+    %% Train controller for lesson 'i'
+    
+    %netc = train ( netc, input(1:5,1:b_max), target_output(1,1:b_max) );
+    
+    
+    %% Plot training lesson 'i'
+ 
+    plot_truck_movement ( out(1:5,1:b_max) );
+    
+       
+end
+ 
+%% Simulation of network for test-input
+ 
+test_input = [ 100 100 180 0 0 ]';
+test_backup_max = 1000;
+ 
+test_ip_c = zeros(5,test_backup_max);
+test_op_c = zeros(1,test_backup_max);
+test_ip_e = zeros(6,test_backup_max);
+test_op_e = zeros(5,test_backup_max);
+test_objective = zeros(1,test_backup_max);
+ 
+test_ip_c (1:5,1) = test_input;
+ 
+for s = 1:test_backup_max
+    
+    test_op_c(1,s) = sim ( netc, test_ip_c(1:5,s) );
+    
+    test_ip_e(1:6,s) = [ test_ip_c(1:5,s); test_op_c(1,s) ];
+    
+    test_op_e(1:5,s) = sim ( nete, test_ip_e(1:6,s) );
+    
+    test_objective(1,s) = ( 0.9*abs(x_dock-test_op_e(1,s)) + 0.9*abs(y_dock-test_op_e(2,s)) + 0.1*abs(180-(test_op_e(3,s)-test_op_e(4,s)-test_op_e(5,s))) );
+    if ((test_objective(1,s) <= 50) && (test_objective(1,s) >= -50))
+        break;
+    end
+    
+    if ( s < test_backup_max )
+        test_ip_c(1:5,s+1) = test_op_e(1:5,s);
+    end
+end
+ 
+s_max = s
+ 
+plot_truck_movement ( test_ip_c(1:5,1:5:s_max) );
+ 
+%% Controller network properties
+ 
+w01c =  cell2mat (netc.IW(1,1));
+w12c =  cell2mat (netc.LW(2,1));
+ 
+ 
+%% Plot generated input-output truck positions
+ 
+plot_truck_movement (op(1:5,1:10:10000))
+  
+ 
+%% Plot trained emulator result vs Plant output
+ 
+op_sim = zeros (data,5);
+op_sim = sim (nete, ip);
+ 
+plot ( op(1,1:10000), op_sim(1,1:10000) );
+            
+
